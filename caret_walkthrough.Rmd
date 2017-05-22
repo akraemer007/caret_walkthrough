@@ -1,0 +1,104 @@
+---
+title: "Caret Walkthrough"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(magrittr)
+library(caret)
+```
+
+Import the data
+```{r}
+train <- read.csv("train_u6lujuX_CVtuZ9i.csv", stringsAsFactors = T)
+# train <- read_csv("train_u6lujuX_CVtuZ9i.csv") # this yields almost twice as many NAs
+glimpse(train)
+```
+
+We need to pre-process our data before we can use it for modeling. Let’s check if the data has any missing values:
+```{r}
+sum(is.na(train))
+# 86.
+```
+
+Next, let us use Caret to impute these missing values using KNN algorithm. We will predict these missing values based on other attributes for that row. Also, we’ll scale and center the numerical data by using the convenient preprocess() in Caret.
+
+```{r}
+#Imputing missing values using KNN.Also centering and scaling numerical columns
+preProcValues <- preProcess(train, method = c("knnImpute","center","scale"))
+
+# From what I can tell, the preProcess function creates a list, but I don't really know with what or why
+
+library('RANN') # this is the KNN package
+train_processed_raw <- predict(preProcValues, train)
+sum(is.na(train_processed_raw))
+#[1] 0
+```
+
+```{r}
+id <- train_processed_raw$Loan_ID # saving the id elsewhere (for dummy?)
+
+train_processed <- train_processed_raw %>% 
+  mutate(Loan_Status = if_else(Loan_Status == 'N', 0,1), # make output numeric
+         Loan_ID = NULL # not sure why I'm doing this. Something to do with creating dummy vars?
+         )
+
+glimpse(train_processed)
+```
+
+Now, creating dummy variables using one hot encoding:
+
+```{r}
+#Converting every categorical variable to numerical using dummy variables
+# I guess that it creates a list that I don't understand
+dmy <- dummyVars(" ~ .", data = train_processed, fullRank = T)
+str(dmy)
+summary(dmy)
+# not sure how this works
+train_transformed <- data.frame(predict(dmy, newdata = train_processed)) %>% 
+  mutate(Loan_Status = as.factor(Loan_Status))
+
+glimpse(train_transformed)
+```
+
+```{r}
+#Spliting training set into two parts based on outcome: 75% and 25%
+index <- createDataPartition(train_transformed$Loan_Status, p=0.75, list=FALSE)
+
+# trainSeta <- train_transformed[ index,]
+trainSet <- train_transformed %>% slice(index)
+
+# testSet <- train_transformed[-index,]
+testSet <- train_transformed %>% slice(-index)
+
+str(trainSet)
+```
+
+[feature seletion](https://www.analyticsvidhya.com/blog/2016/12/introduction-to-feature-selection-methods-with-an-example-or-how-to-select-the-right-variables/)
+
+```{r}
+#Feature selection using rfe in caret
+control <- rfeControl(functions = rfFuncs,
+                   method = "repeatedcv",
+                   repeats = 3,
+                   verbose = FALSE)
+outcomeName <- 'Loan_Status'
+predictors <- names(trainSet)[!names(trainSet) %in% outcomeName]
+Loan_Pred_Profile <- rfe(trainSet[,predictors], trainSet[,outcomeName],
+                      rfeControl = control)
+Loan_Pred_Profile
+#Recursive feature selection
+#Outer resampling method: Cross-Validated (10 fold, repeated 3 times)
+#Resampling performance over subset size:
+#  Variables Accuracy  Kappa AccuracySD KappaSD Selected
+#4   0.7737 0.4127    0.03707 0.09962        
+#8   0.7874 0.4317    0.03833 0.11168        
+#16   0.7903 0.4527    0.04159 0.11526        
+#18   0.7882 0.4431    0.03615 0.10812        
+#The top 5 variables (out of 16):
+#  Credit_History, LoanAmount, Loan_Amount_Term, ApplicantIncome, CoapplicantIncome
+#Taking only the top 5 predictors
+predictors<-c("Credit_History", "LoanAmount", "Loan_Amount_Term", "ApplicantIncome", "CoapplicantIncome")
+```
+
