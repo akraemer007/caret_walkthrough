@@ -102,3 +102,70 @@ Loan_Pred_Profile
 predictors<-c("Credit_History", "LoanAmount", "Loan_Amount_Term", "ApplicantIncome", "CoapplicantIncome")
 ```
 
+This is the cool part of caret. It provides standard syntax for over 200 different [models](http://topepo.github.io/caret/available-models.html).
+
+```{r}
+model_gbm <- train(trainSet[, predictors], trainSet[, outcomeName], method = 'gbm') # GBM
+model_rf <- train(trainSet[, predictors], trainSet[, outcomeName], method = 'rf') # random forest
+model_nnet <- train(trainSet[, predictors], trainSet[, outcomeName], method = 'nnet') # nural net
+model_glm <- train(trainSet[, predictors], trainSet[, outcomeName], method = 'glm') # logistic regression
+```
+
+
+Model tuning. I'm not exactly sure what this does. It's used in the turning areas below. The docs say: 
+"The resampling technique used for evaluating the performance of the model using a set of parameters in Caret by default is bootstrap, but it provides alternatives for using k-fold, repeated k-fold as well as Leave-one-out cross validation (LOOCV) which can be specified using trainControl(). In this example, we’ll be using 5-Fold cross-validation repeated 5 times."
+```{r}
+fitControl <- trainControl(
+  method = "repeatedcv",
+  number = 5,
+  repeats = 5)
+str(fitControl)
+```
+
+t
+```{r}
+# get details of the model
+modelLookup(model='gbm')
+
+#Creating grid
+grid <- expand.grid(n.trees=c(10,20,50,100,500,1000),shrinkage=c(0.01,0.05,0.1,0.5),n.minobsinnode = c(3,5,10),interaction.depth=c(1,5,10))
+
+# training the model
+# So this is like the model we used above, but we added extra parameters: the control, which we defined with fitControl as a 5 fold cross validation repeated 5 times. Secondly, using the grid we defined above, we are running the model with different tweaks of how the model works. 
+# this takes a lot longer to run since it needs to work against the grid and the additional controls
+model_gbm<-train(trainSet[,predictors],trainSet[,outcomeName],method='gbm',trControl=fitControl,tuneGrid=grid)
+
+# summarizing the model
+print(model_gbm)
+```
+
+```{r}
+plot()
+```
+
+6.2. Using tuneLength
+
+Instead, of specifying the exact values for each parameter for tuning we can simply ask it to use any number of possible values for each tuning parameter through tuneLength. Let’s try an example using tuneLength=10.
+
+```{r}
+#using tune length
+model_gbm_tl <- train(trainSet[,predictors],
+                      trainSet[,outcomeName],
+                      method='gbm',
+                      trControl=fitControl,
+                      tuneLength=10)
+print(model_gbm_tl)
+plot(model_gbm_tl)
+```
+
+7. Variable importance estimation using caret
+
+Caret also makes the variable importance estimates accessible with the use of varImp() for any model. Let’s have a look at the variable importance for all the four models that we created:
+
+```{r}
+#Variable Importance
+varImp(object=model_gbm)
+
+plot(varImp(object=model_gbm),main="GBM - Variable Importance")
+```
+
